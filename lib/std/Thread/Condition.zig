@@ -201,45 +201,48 @@ test "Thread.Condition" {
     }
 
     const TestContext = struct {
-        cond: *Condition,
-        cond_main: *Condition,
-        mutex: *Mutex,
-        n: *i32,
-        s: *i32,
+        cond: Condition = .{},
+        cond_main: Condition = .{},
+        mutex: Mutex = .{},
+        n: i32 = 0,
+        signalled: i32 = 0,
+
         fn worker(ctx: *@This()) void {
             ctx.mutex.lock();
-            ctx.n.* += 1;
+            ctx.n += 1;
             ctx.cond_main.signal();
-            while (ctx.s.* == 0)
-                ctx.cond.wait(ctx.mutex);
-            ctx.n.* -= 1;
+            while (ctx.signalled == 0)
+                ctx.cond.wait(&ctx.mutex);
+            ctx.n -= 1;
             ctx.cond_main.signal();
             ctx.mutex.unlock();
+        }
+
+        fn signal(ctx: *@This()) void {
+            ctx.cond.signal();
+            ctx.signalled += 1;
+        }
+
+        fn broadcast(ctx: *@This()) void {
+            ctx.cond.broadcast();
+            ctx.signalled += ctx.n;
         }
     };
     const num_threads = 3;
     var threads: [num_threads]std.Thread = undefined;
-    var cond = Condition{};
-    var cond_main = Condition{};
-    var mut = Mutex{};
-    var n: i32 = 0;
-    var signalled: i32 = 0;
-    var ctx = TestContext{ .cond = &cond, .cond_main = &cond_main, .mutex = &mut, .n = &n, .s = &signalled };
+    var ctx = TestContext{};
 
-    mut.lock();
+    ctx.mutex.lock();
     for (threads) |*t| t.* = try std.Thread.spawn(.{}, TestContext.worker, .{&ctx});
-    cond_main.wait(&mut);
-    while (n < num_threads) cond_main.wait(&mut);
+    while (ctx.n < num_threads) ctx.cond_main.wait(&ctx.mutex);
 
-    cond.signal();
-    signalled += 1;
-    while (n == num_threads) cond_main.wait(&mut);
-    try testing.expect(n == (num_threads - 1));
+    ctx.signal();
+    while (ctx.n == num_threads) ctx.cond_main.wait(&ctx.mutex);
+    try testing.expect(ctx.n == (num_threads - 1));
 
-    cond.broadcast();
-    signalled += n;
-    while (n > 0) cond_main.wait(&mut);
-    try testing.expect(n == 0);
+    ctx.broadcast();
+    while (ctx.n > 0) ctx.cond_main.wait(&ctx.mutex);
+    try testing.expect(ctx.n == 0);
 
     for (threads) |t| t.join();
 }
