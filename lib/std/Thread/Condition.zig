@@ -205,11 +205,13 @@ test "Thread.Condition" {
         cond_main: *Condition,
         mutex: *Mutex,
         n: *i32,
+        s: *i32,
         fn worker(ctx: *@This()) void {
             ctx.mutex.lock();
             ctx.n.* += 1;
             ctx.cond_main.signal();
-            ctx.cond.wait(ctx.mutex);
+            while (ctx.s.* == 0)
+                ctx.cond.wait(ctx.mutex);
             ctx.n.* -= 1;
             ctx.cond_main.signal();
             ctx.mutex.unlock();
@@ -221,7 +223,8 @@ test "Thread.Condition" {
     var cond_main = Condition{};
     var mut = Mutex{};
     var n: i32 = 0;
-    var ctx = TestContext{ .cond = &cond, .cond_main = &cond_main, .mutex = &mut, .n = &n };
+    var signalled: i32 = 0;
+    var ctx = TestContext{ .cond = &cond, .cond_main = &cond_main, .mutex = &mut, .n = &n, .s = &signalled };
 
     mut.lock();
     for (threads) |*t| t.* = try std.Thread.spawn(.{}, TestContext.worker, .{&ctx});
@@ -229,10 +232,12 @@ test "Thread.Condition" {
     while (n < num_threads) cond_main.wait(&mut);
 
     cond.signal();
-    cond_main.wait(&mut);
+    signalled += 1;
+    while (n == num_threads) cond_main.wait(&mut);
     try testing.expect(n == (num_threads - 1));
 
     cond.broadcast();
+    signalled += n;
     while (n > 0) cond_main.wait(&mut);
     try testing.expect(n == 0);
 
