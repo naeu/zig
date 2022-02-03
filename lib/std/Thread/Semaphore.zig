@@ -40,24 +40,23 @@ test "Thread.Semaphore" {
     }
 
     const TestContext = struct {
-        sem: *Semaphore,
-        n: *i32,
+        sem: Semaphore = .{ .permits = 1 },
+        n: i32 = 0,
+
         fn worker(ctx: *@This()) void {
             ctx.sem.wait();
-            ctx.n.* += 1;
+            ctx.n += 1;
             ctx.sem.post();
         }
     };
     const num_threads = 3;
-    var sem = Semaphore{ .permits = 1 };
     var threads: [num_threads]std.Thread = undefined;
-    var n: i32 = 0;
-    var ctx = TestContext{ .sem = &sem, .n = &n };
+    var ctx = TestContext{};
 
-    sem.wait();
+    ctx.sem.wait();
     for (threads) |*t| t.* = try std.Thread.spawn(.{}, TestContext.worker, .{&ctx});
-    sem.post();
+    ctx.sem.post();
     for (threads) |t| t.join();
-    sem.wait();
-    try testing.expect(n == num_threads);
+    ctx.sem.wait();
+    try testing.expect(ctx.n == num_threads);
 }
