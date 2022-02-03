@@ -54,7 +54,9 @@ test "Thread.Semaphore" {
     var n: i32 = 0;
     var ctx = TestContext{ .sem = &sem, .n = &n };
 
+    sem.wait();
     for (threads) |*t| t.* = try std.Thread.spawn(.{}, TestContext.worker, .{&ctx});
+    sem.post();
     for (threads) |t| t.join();
     sem.wait();
     try testing.expect(n == num_threads);
